@@ -137,6 +137,7 @@ Contents:
    summary
    targetencoder
    woe
+   cv_split
    wrapper
 
 

@@ -294,14 +294,28 @@ class NestedCVWrapper(BaseEstimator, TransformerMixin):
                        Vectors to be used for inference by an encoder
                        (e.g. test or validation sets) trained on the
                        full X & y sets. No nested folds are used here
-        :param groups: Groups to be passed to the cv method, e.g. for GroupKFold
+        :param groups: array-like of shape [n_samples] or str
+                       Group labels passed to the cv splitter, e.g. for
+                       GroupKFold or ``ConstrainedGroupKFold``. A string is
+                       interpreted as the name of a column of ``X``; rows
+                       sharing a group are then kept within one fold.
         :param fit_params:
         :return: array, shape = [n_samples, n_numeric + N]
                  Transformed values with encoding applied. Rows are returned
                  in the input's original order.
                  Returns multiple arrays if X_test is not None
+
+        After the call, ``self.cv_split_`` holds the (train, val) index pairs
+        that were used. When the splitter is a
+        :class:`~category_encoders.cv_split.ConstrainedGroupKFold`,
+        ``self.cv_result_`` additionally holds the partition and the coverage
+        statistics produced by the constrained split.
         """
         X, y = utils.convert_inputs(X, y)
+        if isinstance(groups, str):
+            if groups not in X.columns:
+                raise ValueError(f'groups={groups!r} names a column, but it was not found in X.')
+            groups = X[groups]
 
         # Get out-of-fold encoding for the training data
         out_of_fold = pd.DataFrame()
@@ -309,14 +323,21 @@ class NestedCVWrapper(BaseEstimator, TransformerMixin):
         # so with a shuffling splitter the concatenated folds arrive out of input order
         order = np.empty(len(X), dtype=int)
         row_cursor = 0
+        cv_splits = []
 
         for trn_idx, oof_idx in self.cv.split(X, y, groups):
+            cv_splits.append((np.asarray(trn_idx), np.asarray(oof_idx)))
             feature_encoder = copy.deepcopy(self.feature_encoder)
             feature_encoder.fit(X.iloc[trn_idx], y.iloc[trn_idx])
             fold_out = feature_encoder.transform(X.iloc[oof_idx])
             order[np.asarray(oof_idx)] = np.arange(row_cursor, row_cursor + len(oof_idx))
             row_cursor += len(fold_out)
             out_of_fold = pd.concat([out_of_fold, fold_out])
+
+        # Record the exact folds driving the out-of-fold encoding, and the
+        # constrained splitter's rich statistics when available.
+        self.cv_split_ = cv_splits
+        self.cv_result_ = getattr(self.cv, 'result_', None)
 
         # Every position appears in exactly one fold, so order is a permutation
         # restoring X's original row order (safe under duplicate index labels)

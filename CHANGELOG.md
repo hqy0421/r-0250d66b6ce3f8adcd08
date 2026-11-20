@@ -1,3 +1,21 @@
+Unreleased
+==========
+
+* Feature: added ``category_encoders.cv_split.ConstrainedGroupKFold``, a
+  customer-aware K-fold splitter for out-of-fold target encoding. Each group
+  (e.g. a customer id) is assigned wholly to one of K non-empty validation
+  folds, every fold's training side keeps at least ``min_records`` rows for
+  every category of the given ``cols``, and among feasible partitions the
+  global minimum of the per-fold, per-label absolute deviation
+  ``|count(label, fold) - total(label) / K|`` is found with a mixed-integer
+  program (HiGHS via ``scipy.optimize.milp``); ties resolve deterministically.
+  When no partition exists, ``InfeasibleSplitError`` reports the reason without
+  splitting groups or lowering the threshold. ``NestedCVWrapper`` now drives
+  its out-of-fold encoding directly from these folds (also accepting a column
+  name as ``groups``), preserves the original row correspondence, and exposes
+  the used folds (``cv_split_``) together with the partition and coverage
+  statistics (``cv_result_``).
+
 v.2.11.2
 ========
 
